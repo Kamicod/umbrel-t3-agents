@@ -19,7 +19,7 @@ services:
       TZ: Africa/Casablanca
       UMBREL_LOCAL_HOSTS: host.docker.internal,umbrel.local
     volumes:
-      - ${APP_DATA_DIR}/data/home:/home/agent
+      - ${APP_DATA_DIR}/data/home:/home/node
       - ${APP_DATA_DIR}/data/projects:/workspace
     logging:
       driver: json-file

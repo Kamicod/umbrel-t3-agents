@@ -23,10 +23,8 @@ try {
   const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
   const fix = (value) => typeof value === 'string'
     ? value.replaceAll('/home/umbrel', process.env.HOME)
-      .replaceAll(`${process.env.HOME}/.local/node/bin/node`, '/usr/bin/node')
-      .replaceAll(`${process.env.HOME}/.local/node/bin/npx`, '/usr/bin/npx')
-      .replaceAll('/usr/local/bin/node', '/usr/bin/node')
-      .replaceAll('/usr/local/bin/npx', '/usr/bin/npx')
+      .replaceAll(`${process.env.HOME}/.local/node/bin/node`, '/usr/local/bin/node')
+      .replaceAll(`${process.env.HOME}/.local/node/bin/npx`, '/usr/local/bin/npx')
     : value;
   for (const section of [cfg.mcpServers, ...Object.values(cfg.projects || {}).map(x => x?.mcpServers)]) {
     for (const server of Object.values(section || {})) {
