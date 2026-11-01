@@ -1,0 +1,6 @@
+.git
+.github
+**/home
+**/secrets.env
+**/.npm
+**/.t3

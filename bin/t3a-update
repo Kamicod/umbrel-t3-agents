@@ -1,0 +1,14 @@
+#!/bin/bash
+# t3a-update — update T3 Code, Claude Code, Codex and OpenCode in the persistent app home.
+set -u
+log() { echo "$(date -Is) [update] $*"; }
+
+export NPM_CONFIG_PREFIX="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
+export PATH="$HOME/.local/bin:$NPM_CONFIG_PREFIX/bin:$PATH"
+
+claude update 2>&1 | tail -n 2
+npm install -g @openai/codex@latest @opencode/cli@latest 2>&1 | tail -n 2
+
+t3 update --yes 2>&1 | tail -n 3
+log "Restart T3 Agents from Umbrel to load updated CLI versions."
+log "done: t3 $(t3 --version 2>/dev/null) | claude $(claude --version 2>/dev/null) | codex $(codex --version 2>/dev/null) | opencode $(opencode --version 2>/dev/null)"

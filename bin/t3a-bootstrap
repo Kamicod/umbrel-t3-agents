@@ -1,0 +1,38 @@
+#!/bin/bash
+# t3a-bootstrap — installs T3 Code and the three agent CLIs into $HOME. No root needed.
+# Safe to run again: it only installs what is missing.
+set -u
+log() { echo "$(date -Is) [bootstrap] $*"; }
+
+export NPM_CONFIG_PREFIX="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
+export PATH="$HOME/.local/bin:$NPM_CONFIG_PREFIX/bin:$PATH"
+mkdir -p "$HOME/.local/bin" "$NPM_CONFIG_PREFIX/bin" "$HOME/.config/t3-agents"
+
+channel="${T3CODE_CHANNEL:-nightly}"
+
+if ! command -v t3 >/dev/null; then
+  log "installing t3 ($channel)"
+  curl -fsSL https://t3.codes/install.sh | T3CODE_CHANNEL="$channel" sh || log "t3 install FAILED"
+fi
+
+if ! command -v claude >/dev/null; then
+  log "installing Claude Code"
+  curl -fsSL https://claude.ai/install.sh | bash || log "claude install FAILED"
+fi
+
+if ! command -v codex >/dev/null; then
+  log "installing Codex CLI"
+  npm install -g @openai/codex || log "codex install FAILED"
+fi
+
+if ! command -v opencode >/dev/null; then
+  log "installing OpenCode CLI"
+  npm install -g @opencode/cli || log "opencode install FAILED"
+fi
+
+# Git over HTTPS through the GitHub token in the env file (no prompts over T3).
+if [ -n "${GH_TOKEN:-}" ] && ! git config --global --get-regexp '^credential\..*helper' >/dev/null 2>&1; then
+  gh auth setup-git >/dev/null 2>&1 && log "gh set up as git credential helper"
+fi
+
+log "ready: t3 $(t3 --version 2>/dev/null) | claude $(claude --version 2>/dev/null) | codex $(codex --version 2>/dev/null) | opencode $(opencode --version 2>/dev/null)"

@@ -1,0 +1,22 @@
+manifestVersion: 1
+id: kamicod-t3-agents
+category: developer
+name: T3 Agents
+version: "1.0.0"
+tagline: T3 Code with Claude, Codex, and OpenCode on your Umbrel
+description: >-
+  A headless T3 Code server managed as an Umbrel app. It includes Claude Code,
+  Codex CLI, and OpenCode, with persistent T3 settings, provider logins, MCP
+  configuration, and project files. The app can be started, stopped, and
+  restarted from the Umbrel dashboard.
+developer: Kamicod
+website: https://github.com/Kamicod/umbrel-t3-agents
+repo: https://github.com/Kamicod/umbrel-t3-agents
+support: https://github.com/Kamicod/umbrel-t3-agents/issues
+port: 3773
+icon: https://raw.githubusercontent.com/Kamicod/umbrel-t3-agents/main/kamicod-t3-agents/icon.svg
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+torOnly: false
+submitter: Kamicod

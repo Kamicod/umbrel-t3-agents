@@ -1,0 +1,71 @@
+#!/bin/bash
+set -uo pipefail
+
+STATE="$HOME/.t3a"
+mkdir -p "$STATE" "$HOME/.local/bin" "$HOME/.npm-global/bin" /workspace
+log() { echo "$(date -Is) [t3-agents] $*"; }
+
+ENV_FILE="$HOME/.config/t3-agents/env"
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+fi
+export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:/opt/t3a:/usr/local/bin:/usr/bin:/bin"
+export NPM_CONFIG_PREFIX="$HOME/.npm-global"
+
+# The native install used absolute /home/umbrel paths. Remap MCP commands for this container.
+node <<'NODE'
+const fs = require('node:fs');
+const p = `${process.env.HOME}/.claude.json`;
+try {
+  const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
+  const fix = (value) => typeof value === 'string'
+    ? value.replaceAll('/home/umbrel', process.env.HOME)
+      .replaceAll(`${process.env.HOME}/.local/node/bin/node`, '/usr/bin/node')
+      .replaceAll(`${process.env.HOME}/.local/node/bin/npx`, '/usr/bin/npx')
+      .replaceAll('/usr/local/bin/node', '/usr/bin/node')
+      .replaceAll('/usr/local/bin/npx', '/usr/bin/npx')
+    : value;
+  for (const section of [cfg.mcpServers, ...Object.values(cfg.projects || {}).map(x => x?.mcpServers)]) {
+    for (const server of Object.values(section || {})) {
+      if (server.command) server.command = fix(server.command);
+      if (Array.isArray(server.args)) server.args = server.args.map(fix);
+      if (server.env) for (const [key, value] of Object.entries(server.env)) server.env[key] = fix(value);
+      if (server.env?.UMBREL_LOCAL_HOSTS) server.env.UMBREL_LOCAL_HOSTS = 'host.docker.internal,umbrel.local';
+    }
+  }
+  fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + '\n', { mode: 0o600 });
+} catch (e) {
+  if (e.code !== 'ENOENT') throw e;
+}
+NODE
+
+log "installing any missing agent CLIs"
+t3a-bootstrap 2>&1 | tee -a "$STATE/bootstrap.log"
+
+log "syncing MCP servers across Claude Code, Codex, and OpenCode"
+t3a-mcp sync >> "$STATE/mcp-sync.log" 2>&1 || true
+
+watch_mcp() {
+  while true; do
+    inotifywait -qq -e close_write,moved_to --include '\.claude\.json$' "$HOME" 2>/dev/null || sleep 30
+    sleep 2
+    t3a-mcp sync >> "$STATE/mcp-sync.log" 2>&1 || true
+  done
+}
+watch_mcp &
+watcher=$!
+
+log "starting T3 Code server"
+t3 serve --lan --host 0.0.0.0 --port 3773 --no-browser /workspace &
+server=$!
+stop() {
+  log "stopping"
+  kill "$server" "$watcher" 2>/dev/null || true
+  wait "$server" 2>/dev/null || true
+  wait "$watcher" 2>/dev/null || true
+}
+trap stop TERM INT
+wait "$server"

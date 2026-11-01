@@ -1,0 +1,181 @@
+#!/usr/bin/env node
+// t3a-mcp — one MCP list for every agent T3 launches (Claude Code, Codex, OpenCode).
+//
+//   t3a-mcp seed    write the default servers into Claude Code's ~/.claude.json (first run only)
+//   t3a-mcp sync    copy Claude Code's servers into ~/.codex/config.toml and ~/.config/opencode/opencode.json
+//   t3a-mcp watch   sync now, then again whenever ~/.claude.json changes
+//
+// Claude Code's ~/.claude.json is the source of truth, same as on the Mac. Paths and
+// secrets are already correct in that file, so Codex and OpenCode get them verbatim.
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+
+const HOME = os.homedir();
+const CLAUDE_JSON = path.join(HOME, ".claude.json");
+const CODEX_TOML = path.join(HOME, ".codex", "config.toml");
+const OPENCODE_JSON = path.join(HOME, ".config", "opencode", "opencode.json");
+const OUR_MARK = "# managed by t3a-mcp";
+const log = (...a) => console.log(new Date().toISOString(), "[mcp]", ...a);
+
+const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return d; } };
+const writeFile = (f, body) => {
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.writeFileSync(f, body, { mode: 0o600 });
+};
+
+// ---------- seed ----------
+function seed() {
+  const env = process.env;
+  const node = process.execPath;
+  const npx = path.join(path.dirname(node), "npx");
+  const umbrelScript = path.join(HOME, ".claude", "umbrel-smart", "umbrel-smart.mjs");
+  const servers = {
+    umbrel: {
+      type: "stdio",
+      command: node,
+      args: [umbrelScript],
+      env: env.UMBREL_LOCAL_TOKEN
+        ? { UMBREL_LOCAL_HOSTS: "127.0.0.1,umbrel.local", UMBREL_LOCAL_TOKEN: env.UMBREL_LOCAL_TOKEN }
+        : { UMBREL_LOCAL_HOSTS: "127.0.0.1,umbrel.local" },
+    },
+    "n8n-mcp": {
+      type: "stdio",
+      command: npx,
+      args: ["-y", "n8n-mcp"],
+      env: {
+        MCP_MODE: "stdio",
+        LOG_LEVEL: "error",
+        DISABLE_CONSOLE_OUTPUT: "true",
+        ...(env.N8N_API_URL ? { N8N_API_URL: env.N8N_API_URL } : {}),
+        ...(env.N8N_API_KEY ? { N8N_API_KEY: env.N8N_API_KEY } : {}),
+      },
+    },
+    "notion-api": {
+      type: "stdio",
+      command: npx,
+      args: ["-y", "@notionhq/notion-mcp-server"],
+      env: env.NOTION_TOKEN ? { NOTION_TOKEN: env.NOTION_TOKEN } : {},
+    },
+    github: {
+      type: "stdio",
+      command: npx,
+      args: ["-y", "@modelcontextprotocol/server-github"],
+      env: env.GITHUB_PERSONAL_ACCESS_TOKEN
+        ? { GITHUB_PERSONAL_ACCESS_TOKEN: env.GITHUB_PERSONAL_ACCESS_TOKEN }
+        : {},
+    },
+  };
+  // Never clobber a Claude Code config that already has servers (login writes it too).
+  const current = readJson(CLAUDE_JSON, {});
+  if (current.mcpServers && Object.keys(current.mcpServers).length > 0) {
+    log("~/.claude.json already has MCP servers, seed skipped");
+    return;
+  }
+  const next = { ...current, mcpServers: { ...(current.mcpServers || {}), ...servers } };
+  writeFile(CLAUDE_JSON, JSON.stringify(next, null, 2) + "\n");
+  log(`seeded ${Object.keys(servers).length} servers into ~/.claude.json`);
+}
+
+// ---------- collect ----------
+function collect() {
+  const claude = readJson(CLAUDE_JSON, null);
+  if (!claude) { log("~/.claude.json unreadable or mid-write, nothing to do"); return null; }
+  const servers = { ...(claude.mcpServers || {}) };
+  for (const p of Object.values(claude.projects || {})) {
+    for (const [name, s] of Object.entries(p?.mcpServers || {})) {
+      if (!servers[name]) servers[name] = s;
+    }
+  }
+  return servers;
+}
+
+const tomlStr = (s) => JSON.stringify(String(s));
+const tomlKey = (k) => (/^[A-Za-z0-9_-]+$/.test(k) ? k : JSON.stringify(k));
+
+function codexBlocks(servers) {
+  const out = [];
+  for (const [name, s] of Object.entries(servers)) {
+    if (s.type && s.type !== "stdio" && !s.command) continue; // http/sse servers: Codex shape differs
+    const cmd = s.command;
+    if (!cmd) continue;
+    const header = `[mcp_servers.${tomlKey(name)}]`;
+    out.push(header);
+    out.push(`command = ${tomlStr(cmd)}`);
+    if (Array.isArray(s.args) && s.args.length) out.push(`args = [${s.args.map(tomlStr).join(", ")}]`);
+    out.push("startup_timeout_sec = 120");
+    const envEntries = Object.entries(s.env || {}).filter(([, v]) => v != null);
+    if (envEntries.length) {
+      out.push("", `[mcp_servers.${tomlKey(name)}.env]`);
+      for (const [k, v] of envEntries) out.push(`${tomlKey(k)} = ${tomlStr(v)}`);
+    }
+    out.push("");
+  }
+  return out.join("\n");
+}
+
+// Split a TOML file into blocks: a block starts at a [table] line and owns the lines after it.
+function stripMcpTables(text) {
+  const lines = text.split(/\r?\n/);
+  const kept = [];
+  let skipping = false;
+  for (const line of lines) {
+    const isHeader = /^\s*\[/.test(line);
+    if (isHeader) skipping = /^\s*\[mcp_servers[.\]]/.test(line);
+    if (line.trim() === OUR_MARK.trim()) continue;
+    if (!skipping) kept.push(line);
+  }
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
+}
+
+function syncCodex(servers) {
+  const existing = (() => { try { return fs.readFileSync(CODEX_TOML, "utf8"); } catch { return ""; } })();
+  const kept = stripMcpTables(existing).replace(/^\s+/, "");
+  const head = kept ? `${kept}\n\n` : "";
+  const body = `${head}${OUR_MARK}\n\n${codexBlocks(servers)}`;
+  writeFile(CODEX_TOML, `${body.trimEnd()}\n`);
+  log(`codex: ${Object.keys(servers).length} servers`);
+}
+
+function syncOpencode(servers) {
+  const config = readJson(OPENCODE_JSON, { $schema: "https://opencode.ai/config.json" });
+  const out = {};
+  for (const [name, s] of Object.entries(servers)) {
+    if (!s.command) continue;
+    out[name] = {
+      type: "local",
+      command: [s.command, ...(s.args || [])].map(String),
+      ...(s.env && Object.keys(s.env).length ? { environment: s.env } : {}),
+      timeout: { startup: 120000 },
+    };
+  }
+  config.mcp = { ...(config.mcp || {}), servers: out };
+  writeFile(OPENCODE_JSON, JSON.stringify(config, null, 2) + "\n");
+  log(`opencode: ${Object.keys(out).length} servers`);
+}
+
+function sync() {
+  const servers = collect();
+  if (!servers) return;
+  if (Object.keys(servers).length === 0) { log("no servers in ~/.claude.json yet"); return; }
+  syncCodex(servers);
+  syncOpencode(servers);
+}
+
+// ---------- watch ----------
+function watch() {
+  sync();
+  for (;;) {
+    const r = spawnSync("inotifywait", ["-qq", "-e", "close_write,moved_to", "--include", "\\.claude\\.json$", HOME], { stdio: "ignore" });
+    if (r.status !== 0) { spawnSync("sleep", ["30"]); }
+    else { spawnSync("sleep", ["2"]); }
+    sync();
+  }
+}
+
+const mode = process.argv[2] || "sync";
+if (mode === "seed") seed();
+else if (mode === "sync") sync();
+else if (mode === "watch") watch();
+else { console.error(`usage: t3a-mcp [seed|sync|watch]`); process.exit(2); }
