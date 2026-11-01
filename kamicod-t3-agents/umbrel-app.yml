@@ -15,6 +15,7 @@ repo: https://github.com/Kamicod/umbrel-t3-agents
 support: https://github.com/Kamicod/umbrel-t3-agents/issues
 port: 3773
 icon: https://raw.githubusercontent.com/Kamicod/umbrel-t3-agents/main/kamicod-t3-agents/icon.svg
+gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
