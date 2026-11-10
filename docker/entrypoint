@@ -56,12 +56,40 @@ watch_mcp() {
 watch_mcp &
 watcher=$!
 
+# SSH into this container (key login only). T3 sees a listener on port 22 and offers
+# "Open in editor" over SSH. Keys: ~/.ssh/authorized_keys. Host key persists in ~/.t3a/sshd.
+start_sshd() {
+  local dir="$STATE/sshd"
+  mkdir -p "$dir" "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
+  touch "$HOME/.ssh/authorized_keys" && chmod 600 "$HOME/.ssh/authorized_keys"
+  [ -f "$dir/host_ed25519" ] || ssh-keygen -q -t ed25519 -N "" -f "$dir/host_ed25519"
+  cat > "$dir/sshd_config" <<EOF
+Port 22
+ListenAddress 0.0.0.0
+HostKey $dir/host_ed25519
+PidFile $dir/sshd.pid
+AuthorizedKeysFile $HOME/.ssh/authorized_keys
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+UsePAM no
+Subsystem sftp /usr/lib/openssh/sftp-server
+EOF
+  if /usr/sbin/sshd -f "$dir/sshd_config" -E "$STATE/sshd.log"; then
+    log "sshd listening on :22 (key login only)"
+  else
+    log "sshd FAILED to start, see $STATE/sshd.log"
+  fi
+}
+start_sshd
+
 log "starting T3 Code server"
 t3 serve --lan --host 0.0.0.0 --port 3773 --no-browser /workspace &
 server=$!
 stop() {
   log "stopping"
   kill "$server" "$watcher" 2>/dev/null || true
+  [ -f "$STATE/sshd/sshd.pid" ] && kill "$(cat "$STATE/sshd/sshd.pid")" 2>/dev/null || true
   wait "$server" 2>/dev/null || true
   wait "$watcher" 2>/dev/null || true
 }
