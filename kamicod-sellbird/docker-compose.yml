@@ -1,0 +1,30 @@
+version: "3.7"
+
+services:
+  app_proxy:
+    environment:
+      APP_HOST: kamicod-sellbird_server_1
+      APP_PORT: 8080
+
+  server:
+    image: ghcr.io/kamicod/umbrel-sellbird:0.4.0-25ec839
+    restart: on-failure
+    init: true
+    stop_grace_period: 30s
+    user: "1000:1000"
+    # Chromium (used to read company websites) needs more shared memory than
+    # Docker's 64 MB default.
+    shm_size: 512mb
+    environment:
+      # Umbrel's per-app password becomes the dashboard unlock token.
+      SELLBIRD_DASHBOARD_TOKEN: ${APP_PASSWORD}
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+      # Claude login shared with the T3 Agents app. The Claude CLI refreshes
+      # its token in place, so this must be writable.
+      - ${UMBREL_ROOT}/app-data/kamicod-t3-agents/data/home/.claude:/home/sellbird/.claude
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

@@ -1,0 +1,113 @@
+name: Publish Sellbird container
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "docker/sellbird/**"
+      - ".github/workflows/publish-sellbird.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  VERSION: 0.4.0-25ec839
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: docker/sellbird
+          platforms: linux/arm64
+          load: true
+          tags: sellbird:test
+          cache-from: type=gha,scope=sellbird
+          cache-to: type=gha,scope=sellbird,mode=max
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          token="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+          docker run -d --name sb -p 127.0.0.1:8080:8080 \
+            -e SELLBIRD_DASHBOARD_TOKEN="$token" sellbird:test
+          trap 'docker logs sb 2>&1 | tail -40' EXIT
+
+          url=http://127.0.0.1:8080
+          host='Host: umbrel.local:5555'
+          auth="Authorization: Bearer $token"
+          code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+          expect() { # expect <want> <label> <curl args...>
+            want="$1"; label="$2"; shift 2
+            got="$(code "$@")"
+            echo "$label: $got (want $want)"
+            [ "$got" = "$want" ]
+          }
+
+          for i in $(seq 60); do
+            [ "$(code -H "$host" "$url/api/instance")" = 200 ] && break
+            sleep 2
+          done
+
+          expect 200 "page through proxy" -H "$host" "$url/"
+          expect 401 "api without token" -H "$host" "$url/api/setup-status"
+          expect 200 "api with token" -H "$host" -H "$auth" "$url/api/setup-status"
+
+          post() { # post <want> <label> <extra curl args...>
+            want="$1"; label="$2"; shift 2
+            expect "$want" "$label" -X POST -H "$auth" \
+              -H 'Content-Type: application/json' -d '{}' "$@" "$url/api/rename-notice/dismiss"
+          }
+          post 200 "same-origin POST (http)" -H "$host" -H 'Origin: http://umbrel.local:5555'
+          post 200 "same-origin POST (https)" -H "$host" -H 'Origin: https://umbrel.local:5555'
+          post 200 "same-origin POST (forwarded host)" -H 'Host: kamicod-sellbird_server_1:8080' \
+            -H 'X-Forwarded-Host: umbrel.local:5555' -H 'Origin: http://umbrel.local:5555'
+          post 200 "same-origin POST (fetch metadata)" -H 'Host: other.example' \
+            -H 'Sec-Fetch-Site: same-origin' -H 'Origin: https://sellbird.example'
+          post 403 "cross-origin POST" -H "$host" -H 'Origin: http://evil.example'
+          post 403 "cross-site POST" -H "$host" -H 'Sec-Fetch-Site: cross-site' \
+            -H 'Origin: http://evil.example'
+
+          docker exec sb claude --version
+          docker exec sb sh -c 'ls -la /data /data/data && test -f /data/sellbird.yaml'
+          test "$(docker exec sb stat -c %a /data/data/dashboard-token)" = 600
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          # The second name is a tag on the already-public T3 Agents package:
+          # a new GHCR package starts private, and Umbrel pulls without login.
+          images: |
+            ghcr.io/kamicod/umbrel-sellbird
+            ghcr.io/kamicod/umbrel-t3-agents
+          flavor: |
+            latest=false
+          tags: |
+            type=raw,value=${{ env.VERSION }},enable=${{ github.ref == 'refs/heads/main' }}
+          labels: |
+            org.opencontainers.image.title=Sellbird for Umbrel
+            org.opencontainers.image.description=Sellbird (AGPL-3.0, github.com/ethanplusai/sellbird) packaged for Umbrel
+            org.opencontainers.image.licenses=AGPL-3.0-only
+
+      - name: Push
+        if: github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v6
+        with:
+          context: docker/sellbird
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=sellbird

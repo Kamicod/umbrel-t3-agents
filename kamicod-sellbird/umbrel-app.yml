@@ -1,0 +1,36 @@
+manifestVersion: 1
+id: kamicod-sellbird
+category: ai
+name: Sellbird
+version: "0.4.0-25ec839"
+tagline: An AI cold-email agent that finds leads, writes, sends and sorts replies
+description: >-
+  Sellbird finds companies and decision makers, verifies their email
+  addresses, drafts cold emails, sends them from mailboxes you connect, and
+  sorts the replies. Nothing is sent until you approve it, unless you turn on
+  autopilot.
+
+
+  This app runs the open-source Sellbird dashboard on your Umbrel. The AI runs
+  on your Claude plan: the app reuses the Claude login of the T3 Agents app,
+  so T3 Agents must be installed and signed in to Claude.
+
+
+  The dashboard asks for a token the first time you open it in a browser tab.
+  The token is this app's default password, shown by Umbrel.
+developer: ethanplusai
+website: https://sellbird.ai
+repo: https://github.com/ethanplusai/sellbird
+support: https://github.com/Kamicod/umbrel-t3-agents/issues
+releaseNotes: >-
+  First release. Builds Sellbird from upstream commit 25ec839 (after v0.4.0).
+port: 5555
+icon: https://raw.githubusercontent.com/Kamicod/umbrel-t3-agents/main/kamicod-sellbird/icon.svg
+gallery: []
+path: ""
+deterministicPassword: true
+defaultUsername: ""
+defaultPassword: ""
+torOnly: false
+dependencies: []
+submitter: Kamicod

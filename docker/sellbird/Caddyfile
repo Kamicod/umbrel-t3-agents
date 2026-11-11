@@ -1,0 +1,21 @@
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+# Sellbird's dashboard only answers requests whose Host is a loopback address
+# and whose Origin, when present, is exactly its own origin. Behind Umbrel the
+# browser is at http://umbrel.local:<port>, so both headers are translated here.
+#
+# Origin is only translated for requests the browser made from the dashboard's
+# own page (same-origin). A request from any other site keeps its real Origin,
+# and Sellbird refuses it as before. The bearer token check is untouched.
+:8080 {
+	@same_origin expression `{http.request.header.Origin} != "" && ({http.request.header.Sec-Fetch-Site} == "same-origin" || {http.request.header.Origin} in ["http://" + {http.request.hostport}, "https://" + {http.request.hostport}, "http://" + {http.request.header.X-Forwarded-Host}, "https://" + {http.request.header.X-Forwarded-Host}])`
+	request_header @same_origin Origin http://127.0.0.1:5555
+
+	reverse_proxy 127.0.0.1:5555 {
+		header_up Host 127.0.0.1:5555
+	}
+}

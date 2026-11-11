@@ -1,0 +1,38 @@
+#!/bin/sh
+# Starts the Caddy proxy next to the Sellbird dashboard. Any other Sellbird
+# command (setup, train, run, ...) is passed straight through.
+set -eu
+
+home="${SELLBIRD_HOME:-/data}"
+
+if [ ! -w "$home" ]; then
+	echo "error: $home is not writable by uid $(id -u); fix the owner of the data folder" >&2
+	exit 1
+fi
+
+if [ "${1:-dashboard}" = "dashboard" ]; then
+	# Use Umbrel's per-app password as the dashboard token, so the unlock
+	# token is the one Umbrel shows for this app. Only on first start: an
+	# existing token file is never replaced.
+	token="${SELLBIRD_DASHBOARD_TOKEN:-}"
+	token_file="$home/data/dashboard-token"
+	if [ -n "$token" ] && [ ! -e "$token_file" ]; then
+		if printf '%s' "$token" | grep -Eq '^[A-Za-z0-9_-]{43,128}$'; then
+			mkdir -p "$home/data"
+			chmod 700 "$home/data"
+			(umask 077 && printf '%s\n' "$token" > "$token_file")
+		else
+			echo "warning: SELLBIRD_DASHBOARD_TOKEN ignored; it must be 43-128 characters of A-Z a-z 0-9 _ -" >&2
+		fi
+	fi
+
+	# Restart the proxy if it ever exits; the dashboard is the main process.
+	(
+		while :; do
+			caddy run --config /etc/caddy/Caddyfile --adapter caddyfile || true
+			sleep 2
+		done
+	) &
+fi
+
+exec python -m sellbird "$@"

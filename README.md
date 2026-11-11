@@ -25,3 +25,17 @@ The first boot installs any missing CLI tools. If a provider asks for authentica
 ## Image publishing
 
 GitHub Actions builds the ARM64 image for the Pi and publishes it to GHCR on pushes to `main` and version tags. The Docker build context is the repository root; the Dockerfile is `docker/Dockerfile`.
+
+## Sellbird
+
+The store also carries **Sellbird**, an open-source cold-email agent ([ethanplusai/sellbird](https://github.com/ethanplusai/sellbird), AGPL-3.0), packaged from unmodified upstream source.
+
+- The image is built from `docker/sellbird/` by the `Publish Sellbird container` workflow, which also smoke-tests it. The upstream commit is pinned in `docker/sellbird/Dockerfile` (`SELLBIRD_REF`).
+- Sellbird's dashboard only answers on `127.0.0.1:5555`, so the image runs a small Caddy proxy on port 8080 in front of it. The dashboard's token check is unchanged.
+- The dashboard token is the app's default password, shown by Umbrel. Paste it into the "Dashboard locked" box, or open `http://umbrel.local:5555/#token=<password>`.
+- The AI runs through the Claude CLI and reuses the T3 Agents app's Claude login (`data/home/.claude`), so T3 Agents must be installed and signed in.
+- Config, knowledge files and the database live in the app's `data` folder.
+- Run one-off commands from the Pi with `sudo docker exec -it kamicod-sellbird_server_1 python -m sellbird <command>`, for example `setup` or `train <url>`.
+- Sending stops when the container restarts. Start it again from the dashboard's Actions card.
+
+To update Sellbird, change `SELLBIRD_REF`, the `VERSION` in the workflow, and the version and image tag in `kamicod-sellbird/`, then push to `main`.
