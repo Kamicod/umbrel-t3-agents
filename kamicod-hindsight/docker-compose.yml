@@ -55,6 +55,8 @@ services:
       HINDSIGHT_API_REFLECT_DECISION_MODEL_MODEL: perplexity/pplx-decider-v1.3:free
       # Small box: fewer parallel background tasks and DB connections
       HINDSIGHT_API_WORKER_MAX_SLOTS: "4"
+      # Stable id so tasks in progress are recovered after the container is recreated
+      HINDSIGHT_API_WORKER_ID: hindsight-pi
     volumes:
       - ${APP_DATA_DIR}/data/pg0:/home/hindsight/.pg0
     depends_on:
@@ -68,7 +70,7 @@ services:
   embed:
     # hs-embed-1 (int8 ONNX) behind an OpenAI-compatible /v1/embeddings. Packages install once
     # into data/embed/deps; the model files live in data/embed/model (copied from the Mac build).
-    image: python:3.11-slim
+    image: python:3.12-slim
     restart: unless-stopped
     mem_limit: 512m
     user: "1000:1000"
@@ -84,8 +86,8 @@ services:
       - sh
       - -c
       - >-
-        [ -f /embed/deps/.ok-1 ] || (pip install --no-cache-dir --disable-pip-version-check --target /embed/deps
-        onnxruntime==1.32.0 tokenizers==0.23.3 numpy==2.5.5 && touch /embed/deps/.ok-1);
+        [ -f /embed/deps/.ok-py312 ] || (pip install --no-cache-dir --disable-pip-version-check --target /embed/deps
+        onnxruntime==1.32.0 tokenizers==0.23.3 numpy==2.5.5 && touch /embed/deps/.ok-py312);
         until [ -f /embed/model/model_int8.onnx ]; do echo "waiting for /embed/model/model_int8.onnx"; sleep 30; done;
         exec python /embed/server.py
     volumes:

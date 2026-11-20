@@ -2,7 +2,7 @@ manifestVersion: 1
 id: kamicod-hindsight
 category: ai
 name: Hindsight
-version: "1.2.3"
+version: "1.2.3-r2"
 tagline: Long-term memory for your AI agents, with an MCP endpoint
 description: >-
   Hindsight (MIT, by Vectorize) stores what your agents learn and gives it back
@@ -25,8 +25,8 @@ website: https://hindsight.vectorize.io
 repo: https://github.com/vectorize-io/hindsight
 support: https://github.com/Kamicod/umbrel-t3-agents/issues
 releaseNotes: >-
-  First release: Hindsight 1.2.3 slim with cloud decision and rerank providers
-  and a local int8 embedding service.
+  Embedding service on Python 3.12 (fixes the package install) and a stable
+  worker id so background tasks resume after the container is recreated.
 port: 9999
 icon: https://raw.githubusercontent.com/Kamicod/umbrel-t3-agents/main/kamicod-hindsight/icon.svg
 gallery: []
