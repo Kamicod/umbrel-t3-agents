@@ -1,0 +1,97 @@
+version: "3.7"
+
+services:
+  app_proxy:
+    environment:
+      APP_HOST: kamicod-hindsight_server_1
+      APP_PORT: 9999
+
+  server:
+    # Pinned: the database is built on a Mac with the same version, then restored here.
+    image: ghcr.io/vectorize-io/hindsight:1.2.3-slim
+    restart: unless-stopped
+    stop_grace_period: 1m
+    mem_limit: 1g
+    ports:
+      # API + MCP. Every request needs the API key from data/secrets.env.
+      - "8888:8888"
+    env_file:
+      # Provider keys and the API key. Written on the Pi, never committed.
+      - path: ${APP_DATA_DIR}/data/secrets.env
+        required: false
+    environment:
+      HINDSIGHT_API_HOST: 0.0.0.0
+      HINDSIGHT_API_PORT: "8888"
+      HINDSIGHT_CP_HOSTNAME: 0.0.0.0
+      HINDSIGHT_API_MCP_ENABLED: "true"
+      HINDSIGHT_API_TENANT_EXTENSION: hindsight_api.extensions.builtin.tenant:ApiKeyTenantExtension
+      # LLM: Haiku 5.5 on the Claude plan, through T3 Agents' claude-api (plain key profile)
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: http://kamicod-t3-agents_server_1:8787/v1
+      HINDSIGHT_API_LLM_MODEL: claude-haiku-5-5
+      HINDSIGHT_API_LLM_MAX_CONCURRENT: "2"
+      HINDSIGHT_API_LLM_TIMEOUT: "180"
+      # Embeddings: hs-embed-1 int8 from the embed service below (same vectors as the Mac build)
+      HINDSIGHT_API_EMBEDDINGS_PROVIDER: openai
+      HINDSIGHT_API_EMBEDDINGS_OPENAI_BASE_URL: http://kamicod-hindsight_embed_1:8181/v1
+      HINDSIGHT_API_EMBEDDINGS_OPENAI_MODEL: hs-embed-1-int8
+      HINDSIGHT_API_EMBEDDINGS_OPENAI_DIMENSIONS: "384"
+      HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY: local
+      HINDSIGHT_API_EMBEDDINGS_OPENAI_BATCH_SIZE: "32"
+      # Reranker chain: NVIDIA free -> OpenRouter free -> rrf (no model: plain fused ranking, never fails)
+      HINDSIGHT_API_RERANKER_PROVIDER: nvidia
+      HINDSIGHT_API_RERANKER_NVIDIA_MODEL: nvidia/nemotron-3.5-rerank-8b
+      HINDSIGHT_API_RERANKER_MAX_CANDIDATES: "100"
+      HINDSIGHT_API_RERANKER_1_PROVIDER: openrouter
+      HINDSIGHT_API_RERANKER_1_OPENROUTER_MODEL: nvidia/nemotron-3.5-rerank-8b:free
+      HINDSIGHT_API_RERANKER_2_PROVIDER: rrf
+      # Decisions: Cloudflare Clef-flash (consolidation); reflect on OpenRouter's free decider; recall keeps the reranker
+      HINDSIGHT_API_DECISION_MODEL_PROVIDER: cloudflare
+      HINDSIGHT_API_DECISION_MODEL_MODEL: clef-flash
+      HINDSIGHT_API_DECISION_MODEL_MAX_REQUEST_TOKENS: "20000"
+      HINDSIGHT_API_RECALL_DECISION_MODEL_PROVIDER: none
+      HINDSIGHT_API_REFLECT_DECISION_MODEL_PROVIDER: typesafe
+      HINDSIGHT_API_REFLECT_DECISION_MODEL_BASE_URL: https://openrouter.ai/api
+      HINDSIGHT_API_REFLECT_DECISION_MODEL_MODEL: perplexity/pplx-decider-v1.3:free
+      # Small box: fewer parallel background tasks and DB connections
+      HINDSIGHT_API_WORKER_MAX_SLOTS: "4"
+    volumes:
+      - ${APP_DATA_DIR}/data/pg0:/home/hindsight/.pg0
+    depends_on:
+      - embed
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  embed:
+    # hs-embed-1 (int8 ONNX) behind an OpenAI-compatible /v1/embeddings. Packages install once
+    # into data/embed/deps; the model files live in data/embed/model (copied from the Mac build).
+    image: python:3.11-slim
+    restart: unless-stopped
+    mem_limit: 512m
+    user: "1000:1000"
+    working_dir: /embed
+    environment:
+      HOME: /embed
+      PYTHONPATH: /embed/deps
+      EMBED_MODEL_DIR: /embed/model
+      EMBED_THREADS: "2"
+      EMBED_PORT: "8181"
+      MALLOC_ARENA_MAX: "2"
+    command:
+      - sh
+      - -c
+      - >-
+        [ -f /embed/deps/.ok-1 ] || (pip install --no-cache-dir --disable-pip-version-check --target /embed/deps
+        onnxruntime==1.32.0 tokenizers==0.23.3 numpy==2.5.5 && touch /embed/deps/.ok-1);
+        until [ -f /embed/model/model_int8.onnx ]; do echo "waiting for /embed/model/model_int8.onnx"; sleep 30; done;
+        exec python /embed/server.py
+    volumes:
+      - ${APP_DATA_DIR}/data/embed:/embed
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"

@@ -39,3 +39,14 @@ The store also carries **Sellbird**, an open-source cold-email agent ([ethanplus
 - Sending stops when the container restarts. Start it again from the dashboard's Actions card.
 
 To update Sellbird, change `SELLBIRD_REF`, the `VERSION` in the workflow, and the version and image tag in `kamicod-sellbird/`, then push to `main`.
+
+## Hindsight
+
+The store also carries **Hindsight** ([vectorize-io/hindsight](https://github.com/vectorize-io/hindsight), MIT), a long-term memory server with an MCP endpoint, using the official `ghcr.io/vectorize-io/hindsight:<version>-slim` image (no ML models in the container).
+
+- **LLM:** Haiku 5.5 on the Claude plan, through the T3 Agents app's `claude-api` endpoint (`kamicod-t3-agents_server_1:8787`, a key in `~/claude-api/keys/`). T3 Agents must be installed and signed in.
+- **Embeddings:** the `embed` container serves hs-embed-1 as an int8 ONNX model (about 150 MB) on an OpenAI-compatible `/v1/embeddings`. The model files are not in this repository; copy `model_int8.onnx` and `tokenizer.json` into the app's `data/embed/model/`. The container installs its Python packages once into `data/embed/deps` and waits until the model is there.
+- **Decisions and reranking:** Cloudflare Workers AI (Clef-flash) for consolidation, OpenRouter's free decider for reflect, and NVIDIA's free Nemotron reranker, falling back to OpenRouter and then to plain fused ranking (`rrf`).
+- **Secrets:** provider keys and the API key live only in the app's `data/secrets.env` (`HINDSIGHT_API_TENANT_API_KEY`, `HINDSIGHT_CP_DATAPLANE_API_KEY`, `HINDSIGHT_API_LLM_API_KEY`, `HINDSIGHT_API_RERANKER_NVIDIA_API_KEY`, `HINDSIGHT_API_RERANKER_1_OPENROUTER_API_KEY`, `HINDSIGHT_API_DECISION_MODEL_API_KEY`, `HINDSIGHT_API_DECISION_MODEL_BASE_URL`, `HINDSIGHT_API_REFLECT_DECISION_MODEL_API_KEY`).
+- **Access:** the web UI opens from the tile (port 9999, behind Umbrel's login). The API and MCP endpoint are on port 8888 and need the API key, for example from Claude Code over Tailscale: `http://<pi-tailscale-ip>:8888/mcp/<bank>/` with `Authorization: Bearer <key>`.
+- **Data:** the embedded Postgres lives in `data/pg0`. The image version is pinned so a database built elsewhere with the same Hindsight version can be restored here.

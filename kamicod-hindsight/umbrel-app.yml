@@ -1,0 +1,38 @@
+manifestVersion: 1
+id: kamicod-hindsight
+category: ai
+name: Hindsight
+version: "1.2.3"
+tagline: Long-term memory for your AI agents, with an MCP endpoint
+description: >-
+  Hindsight (MIT, by Vectorize) stores what your agents learn and gives it back
+  when it matters: retain, recall and reflect over a personal memory bank, with
+  an MCP endpoint for Claude Code, Codex and OpenCode.
+
+
+  This package runs the slim Hindsight image (no ML models in the container)
+  plus a small embedding service (hs-embed-1, int8 ONNX, about 150 MB).
+  Writing memories uses Claude through the T3 Agents app's claude-api
+  endpoint. Decisions run on Cloudflare Workers AI and reranking on NVIDIA,
+  both on free tiers, with OpenRouter and the LLM as fallbacks.
+
+
+  The API (port 8888) requires an API key. The web UI opens from this tile.
+  Provider keys live only in the app data folder (data/secrets.env), never in
+  this repository.
+developer: Vectorize
+website: https://hindsight.vectorize.io
+repo: https://github.com/vectorize-io/hindsight
+support: https://github.com/Kamicod/umbrel-t3-agents/issues
+releaseNotes: >-
+  First release: Hindsight 1.2.3 slim with cloud decision and rerank providers
+  and a local int8 embedding service.
+port: 9999
+icon: https://raw.githubusercontent.com/Kamicod/umbrel-t3-agents/main/kamicod-hindsight/icon.svg
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+torOnly: false
+dependencies: []
+submitter: Kamicod
