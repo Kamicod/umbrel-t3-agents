@@ -97,3 +97,36 @@ services:
       options:
         max-size: 5m
         max-file: "2"
+
+  bridge:
+    # hs-vault-bridge: keeps Hindsight and an Obsidian vault in sync (webhooks + file watching).
+    # The script and the vault are NOT in this repo: mount them locally in Umbrel app settings
+    # (custom mounts on this service): script folder -> /bridge (read-only), vault -> /vault, state -> /state,
+    # and set HS_BANK in custom environment. Until then the service just idles.
+    image: python:3.12-slim
+    restart: unless-stopped
+    mem_limit: 160m
+    user: "1000:1000"
+    env_file:
+      - path: ${APP_DATA_DIR}/data/secrets.env
+        required: false
+    environment:
+      HS_URL: http://kamicod-hindsight_server_1:8888
+      VAULT: /vault
+      STATE_DIR: /state
+      BRIDGE_PORT: "8790"
+      BRIDGE_WEBHOOK_URL: http://kamicod-hindsight_bridge_1:8790/webhook
+      PYTHONDONTWRITEBYTECODE: "1"
+    command:
+      - sh
+      - -c
+      - >-
+        if [ -f /bridge/bridge.py ]; then exec python -u /bridge/bridge.py;
+        else echo "bridge: mount the script folder at /bridge to enable"; exec sleep infinity; fi
+    depends_on:
+      - server
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
