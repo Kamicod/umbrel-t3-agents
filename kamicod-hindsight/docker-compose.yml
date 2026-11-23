@@ -19,6 +19,9 @@ services:
       # Provider keys and the API key. Written on the Pi, never committed.
       - path: ${APP_DATA_DIR}/data/secrets.env
         required: false
+      # Optional per-user overrides kept in the Umbrel home (e.g. an LLM provider key). Loaded last, so it wins.
+      - path: ${UMBREL_ROOT}/home/.config/hindsight/llm.env
+        required: false
     environment:
       HINDSIGHT_API_HOST: 0.0.0.0
       HINDSIGHT_API_PORT: "8888"

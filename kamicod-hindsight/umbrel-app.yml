@@ -2,7 +2,7 @@ manifestVersion: 1
 id: kamicod-hindsight
 category: ai
 name: Hindsight
-version: "1.2.3-r3"
+version: "1.2.3-r4"
 tagline: Long-term memory for your AI agents, with an MCP endpoint
 description: >-
   Hindsight (MIT, by Vectorize) stores what your agents learn and gives it back
@@ -27,7 +27,8 @@ support: https://github.com/Kamicod/umbrel-t3-agents/issues
 releaseNotes: >-
   Adds an optional bridge service that keeps Hindsight in sync with an Obsidian vault
   (memory pages out, trusted notes and corrections in). It stays idle until you mount
-  its script and vault in the app settings.
+  its script and vault in the app settings. The server also reads an optional
+  llm.env from ~/.config/hindsight in the Umbrel home, for LLM provider keys.
 port: 9999
 icon: https://raw.githubusercontent.com/Kamicod/umbrel-t3-agents/main/kamicod-hindsight/icon.svg
 gallery: []
